@@ -1,0 +1,1188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>SCROLLTRAP — Algorithm Simulator</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #050a05;
+  --surface: #080f08;
+  --panel: #0c150c;
+  --green: #00ff41;
+  --green-dim: #00b32c;
+  --green-faint: #003d0f;
+  --green-glow: rgba(0,255,65,0.15);
+  --amber: #ffb700;
+  --red: #ff2d2d;
+  --cyan: #00e5ff;
+  --text: #c8ffc8;
+  --muted: #4a7a4a;
+  --border: #0d2e0d;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 13px;
+  overflow: hidden;
+}
+
+/* SCANLINE OVERLAY */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.08) 2px, rgba(0,0,0,0.08) 4px);
+  pointer-events: none;
+  z-index: 9999;
+}
+
+/* SCREENS */
+.screen { display: none; height: 100vh; overflow: hidden; }
+.screen.active { display: flex; flex-direction: column; }
+
+/* ═══════════════════════════════════════
+   SPLASH SCREEN
+═══════════════════════════════════════ */
+#splash {
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 1.5rem;
+  background: radial-gradient(ellipse at center, #001a00 0%, var(--bg) 70%);
+}
+
+.ascii-logo {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: clamp(8px, 2.5vw, 13px);
+  color: var(--green);
+  line-height: 1.2;
+  margin-bottom: 1.5rem;
+  text-shadow: 0 0 20px var(--green);
+  white-space: pre;
+}
+
+.game-title {
+  font-family: 'Orbitron', monospace;
+  font-size: clamp(1.6rem, 6vw, 2.8rem);
+  font-weight: 900;
+  color: var(--green);
+  letter-spacing: 4px;
+  text-shadow: 0 0 30px var(--green), 0 0 60px rgba(0,255,65,0.3);
+  margin-bottom: 0.4rem;
+  animation: flicker 4s infinite;
+}
+
+.game-sub {
+  font-size: 0.7rem;
+  letter-spacing: 6px;
+  color: var(--muted);
+  text-transform: uppercase;
+  margin-bottom: 2rem;
+}
+
+.splash-card {
+  border: 1px solid var(--green-dim);
+  background: var(--panel);
+  border-radius: 4px;
+  padding: 1.2rem;
+  max-width: 380px;
+  width: 100%;
+  margin-bottom: 1.5rem;
+  text-align: left;
+}
+
+.splash-card .label {
+  font-size: 0.6rem;
+  letter-spacing: 4px;
+  color: var(--green-dim);
+  text-transform: uppercase;
+  margin-bottom: 0.8rem;
+}
+
+.splash-card li {
+  list-style: none;
+  color: var(--text);
+  padding: 0.3rem 0;
+  padding-left: 1.2rem;
+  position: relative;
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+.splash-card li::before { content: '>'; color: var(--green); position: absolute; left: 0; }
+
+.mode-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.6rem;
+  max-width: 380px;
+  width: 100%;
+  margin-bottom: 1rem;
+}
+
+.mode-btn {
+  border: 1px solid var(--green-dim);
+  background: var(--panel);
+  color: var(--text);
+  border-radius: 4px;
+  padding: 0.8rem;
+  cursor: pointer;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.7rem;
+  text-align: center;
+  transition: all 0.2s;
+  line-height: 1.4;
+}
+.mode-btn:hover, .mode-btn.selected {
+  border-color: var(--green);
+  background: var(--green-faint);
+  color: var(--green);
+  box-shadow: inset 0 0 15px rgba(0,255,65,0.1);
+}
+.mode-btn .mode-name { font-family: 'Orbitron', monospace; font-size: 0.65rem; font-weight: 700; display: block; margin-bottom: 0.3rem; }
+
+.start-btn {
+  font-family: 'Orbitron', monospace;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 3px;
+  background: var(--green);
+  color: #000;
+  border: none;
+  border-radius: 4px;
+  padding: 0.9rem 2.5rem;
+  cursor: pointer;
+  width: 100%;
+  max-width: 380px;
+  text-transform: uppercase;
+  box-shadow: 0 0 25px rgba(0,255,65,0.4);
+  transition: all 0.15s;
+}
+.start-btn:active { transform: scale(0.97); }
+
+/* ═══════════════════════════════════════
+   GAME SCREEN
+═══════════════════════════════════════ */
+#game { flex-direction: column; }
+
+/* TOP HUD */
+.hud {
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  padding: 0.5rem 0.8rem;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 0.8rem;
+  flex-shrink: 0;
+}
+
+.hud-title {
+  font-family: 'Orbitron', monospace;
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: var(--green);
+  letter-spacing: 2px;
+}
+
+.hud-stats {
+  display: flex;
+  gap: 0.8rem;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.hud-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.hud-stat .val {
+  font-family: 'Orbitron', monospace;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--green);
+}
+.hud-stat .lbl { font-size: 0.5rem; color: var(--muted); letter-spacing: 2px; text-transform: uppercase; }
+
+.lives-display { display: flex; gap: 3px; }
+.life { width: 8px; height: 8px; background: var(--green); border-radius: 50%; box-shadow: 0 0 6px var(--green); transition: all 0.3s; }
+.life.dead { background: var(--green-faint); box-shadow: none; }
+
+/* ALGO STATUS BAR */
+.algo-bar {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 0.4rem 0.8rem;
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  flex-shrink: 0;
+}
+.algo-label { font-size: 0.55rem; letter-spacing: 3px; color: var(--muted); text-transform: uppercase; white-space: nowrap; }
+.algo-track { flex: 1; height: 4px; background: var(--green-faint); border-radius: 2px; overflow: hidden; }
+.algo-fill { height: 100%; background: linear-gradient(90deg, var(--green-dim), var(--green)); border-radius: 2px; transition: width 0.6s ease; box-shadow: 0 0 8px var(--green); }
+.algo-pct { font-size: 0.6rem; color: var(--green); font-family: 'Orbitron', monospace; min-width: 30px; text-align: right; }
+
+/* MAIN CONTENT AREA */
+.game-body {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+/* FEED / CARD AREA */
+.feed-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 0.8rem;
+  overflow: hidden;
+}
+
+.post-card {
+  width: 100%;
+  max-width: 420px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  animation: slideIn 0.35s cubic-bezier(0.16,1,0.3,1);
+  position: relative;
+}
+
+.post-card.correct-glow { border-color: var(--green); box-shadow: 0 0 25px rgba(0,255,65,0.3); }
+.post-card.wrong-glow { border-color: var(--red); box-shadow: 0 0 25px rgba(255,45,45,0.3); }
+
+.card-header {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.7rem 0.9rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.avatar-box {
+  width: 34px; height: 34px;
+  border-radius: 3px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.1rem;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+}
+
+.card-username { font-size: 0.75rem; color: var(--green); }
+.card-time { font-size: 0.6rem; color: var(--muted); margin-top: 1px; }
+
+.algo-badge {
+  margin-left: auto;
+  font-size: 0.5rem;
+  letter-spacing: 2px;
+  padding: 0.2rem 0.5rem;
+  border-radius: 2px;
+  text-transform: uppercase;
+}
+.badge-organic { background: rgba(0,255,65,0.1); color: var(--green-dim); border: 1px solid var(--green-faint); }
+.badge-targeted { background: rgba(255,183,0,0.1); color: var(--amber); border: 1px solid rgba(255,183,0,0.3); animation: badgePulse 1.5s infinite; }
+.badge-viral { background: rgba(0,229,255,0.1); color: var(--cyan); border: 1px solid rgba(0,229,255,0.3); }
+
+.card-visual {
+  padding: 1rem 0.9rem 0.6rem;
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+}
+.card-emoji { font-size: 2.4rem; flex-shrink: 0; }
+.card-content { flex: 1; }
+.card-caption { font-size: 0.8rem; color: var(--text); line-height: 1.5; margin-bottom: 0.5rem; }
+.card-tags span {
+  font-size: 0.58rem;
+  background: var(--green-faint);
+  color: var(--green-dim);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  padding: 0.15rem 0.5rem;
+  margin-right: 0.3rem;
+}
+
+.card-stats {
+  display: flex;
+  padding: 0.5rem 0.9rem;
+  gap: 1.2rem;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.card-stat { font-size: 0.62rem; color: var(--muted); }
+.card-stat span { color: var(--text); }
+
+/* QUESTION SECTION */
+.question-box {
+  padding: 0.8rem 0.9rem;
+}
+.question-text {
+  font-size: 0.72rem;
+  color: var(--cyan);
+  margin-bottom: 0.7rem;
+  line-height: 1.4;
+}
+.question-text::before { content: '> '; color: var(--green); }
+
+.answer-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+
+.answer-btn {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text);
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.68rem;
+  padding: 0.6rem 0.5rem;
+  cursor: pointer;
+  text-align: left;
+  line-height: 1.4;
+  transition: all 0.15s;
+}
+.answer-btn:hover { border-color: var(--green-dim); background: var(--green-faint); color: var(--green); }
+.answer-btn.correct { border-color: var(--green); background: rgba(0,255,65,0.1); color: var(--green); box-shadow: 0 0 10px rgba(0,255,65,0.2); }
+.answer-btn.wrong { border-color: var(--red); background: rgba(255,45,45,0.1); color: var(--red); }
+.answer-btn:disabled { cursor: default; }
+
+/* FEEDBACK OVERLAY */
+.feedback-bar {
+  padding: 0.6rem 0.9rem;
+  font-size: 0.72rem;
+  line-height: 1.5;
+  border-top: 1px solid var(--border);
+  display: none;
+  animation: fadeIn 0.2s ease;
+}
+.feedback-bar.show { display: block; }
+.feedback-bar.correct { color: var(--green); border-color: var(--green-dim); background: rgba(0,255,65,0.05); }
+.feedback-bar.wrong { color: var(--amber); border-color: rgba(255,183,0,0.3); background: rgba(255,183,0,0.05); }
+
+.next-btn {
+  display: none;
+  width: 100%;
+  max-width: 420px;
+  margin-top: 0.6rem;
+  background: transparent;
+  border: 1px solid var(--green-dim);
+  color: var(--green);
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.7rem;
+  letter-spacing: 2px;
+  padding: 0.7rem;
+  border-radius: 3px;
+  cursor: pointer;
+  text-transform: uppercase;
+  transition: all 0.15s;
+}
+.next-btn:hover { background: var(--green-faint); box-shadow: 0 0 15px rgba(0,255,65,0.2); }
+.next-btn.show { display: block; animation: fadeIn 0.2s ease; }
+
+/* PROFILE PANEL */
+.profile-panel {
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  padding: 0.5rem 0.8rem;
+  flex-shrink: 0;
+}
+.profile-label { font-size: 0.5rem; letter-spacing: 3px; color: var(--muted); text-transform: uppercase; margin-bottom: 0.4rem; }
+.interest-chips { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.chip {
+  font-size: 0.6rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 2px;
+  border: 1px solid;
+  transition: all 0.3s;
+}
+.chip-high { border-color: var(--green); color: var(--green); background: rgba(0,255,65,0.1); }
+.chip-med { border-color: var(--amber); color: var(--amber); background: rgba(255,183,0,0.08); }
+.chip-low { border-color: var(--muted); color: var(--muted); background: transparent; }
+
+/* ═══════════════════════════════════════
+   RESULTS SCREEN
+═══════════════════════════════════════ */
+#results {
+  align-items: center;
+  justify-content: flex-start;
+  overflow-y: auto;
+  padding: 1.5rem 1rem;
+  background: radial-gradient(ellipse at center top, #001a00 0%, var(--bg) 60%);
+}
+
+.results-inner { width: 100%; max-width: 440px; margin: 0 auto; }
+
+.results-header {
+  text-align: center;
+  margin-bottom: 1.5rem;
+}
+.results-title {
+  font-family: 'Orbitron', monospace;
+  font-size: 1.6rem;
+  font-weight: 900;
+  color: var(--green);
+  text-shadow: 0 0 25px var(--green);
+  margin-bottom: 0.3rem;
+}
+.results-sub { font-size: 0.65rem; color: var(--muted); letter-spacing: 3px; text-transform: uppercase; }
+
+.score-ring {
+  width: 120px; height: 120px;
+  border: 3px solid var(--green);
+  border-radius: 50%;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  margin: 0 auto 1.5rem;
+  box-shadow: 0 0 30px rgba(0,255,65,0.3), inset 0 0 20px rgba(0,255,65,0.05);
+}
+.score-num {
+  font-family: 'Orbitron', monospace;
+  font-size: 2rem;
+  font-weight: 900;
+  color: var(--green);
+  line-height: 1;
+}
+.score-lbl { font-size: 0.55rem; color: var(--muted); letter-spacing: 2px; margin-top: 3px; }
+
+.grade-box {
+  text-align: center;
+  margin-bottom: 1.2rem;
+  font-family: 'Orbitron', monospace;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.stats-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.6rem;
+  margin-bottom: 1.2rem;
+}
+.stat-box {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.7rem;
+  text-align: center;
+}
+.stat-box .n { font-family: 'Orbitron', monospace; font-size: 1.3rem; font-weight: 700; }
+.stat-box .l { font-size: 0.55rem; color: var(--muted); letter-spacing: 1px; margin-top: 2px; }
+
+.profile-report {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+.report-label { font-size: 0.55rem; letter-spacing: 3px; color: var(--green-dim); text-transform: uppercase; margin-bottom: 0.8rem; }
+.report-bar-row { display: flex; align-items: center; gap: 0.7rem; margin-bottom: 0.5rem; }
+.report-bar-name { font-size: 0.65rem; width: 70px; flex-shrink: 0; color: var(--text); }
+.report-bar-track { flex: 1; height: 6px; background: var(--green-faint); border-radius: 3px; overflow: hidden; }
+.report-bar-fill { height: 100%; border-radius: 3px; transition: width 0.8s ease; }
+.report-bar-val { font-size: 0.6rem; width: 24px; text-align: right; font-family: 'Orbitron', monospace; }
+
+.truth-box {
+  background: var(--panel);
+  border: 1px solid rgba(0,229,255,0.2);
+  border-radius: 4px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+.truth-label { font-size: 0.55rem; letter-spacing: 3px; color: var(--cyan); text-transform: uppercase; margin-bottom: 0.8rem; }
+.truth-item { display: flex; gap: 0.6rem; margin-bottom: 0.6rem; font-size: 0.72rem; color: var(--text); line-height: 1.5; }
+.truth-item::before { content: '>>'; color: var(--green); flex-shrink: 0; }
+
+.replay-btn {
+  font-family: 'Orbitron', monospace;
+  font-weight: 700;
+  letter-spacing: 3px;
+  background: var(--green);
+  color: #000;
+  border: none;
+  border-radius: 4px;
+  padding: 0.9rem;
+  cursor: pointer;
+  width: 100%;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  box-shadow: 0 0 20px rgba(0,255,65,0.3);
+  transition: all 0.15s;
+  margin-bottom: 2rem;
+}
+.replay-btn:active { transform: scale(0.97); }
+
+/* ANIMATIONS */
+@keyframes slideIn {
+  from { opacity: 0; transform: translateY(18px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes flicker {
+  0%,95%,100% { opacity: 1; }
+  96% { opacity: 0.4; }
+  97% { opacity: 1; }
+  98% { opacity: 0.6; }
+}
+@keyframes badgePulse {
+  0%,100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+@keyframes shake {
+  0%,100% { transform: translateX(0); }
+  20% { transform: translateX(-6px); }
+  40% { transform: translateX(6px); }
+  60% { transform: translateX(-4px); }
+  80% { transform: translateX(4px); }
+}
+.shake { animation: shake 0.4s ease; }
+
+/* TERMINAL BOOT */
+#bootScreen {
+  position: fixed; inset: 0;
+  background: var(--bg);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 500;
+  transition: opacity 0.5s;
+}
+#bootScreen.gone { opacity: 0; pointer-events: none; }
+.boot-text {
+  font-size: 0.8rem;
+  color: var(--green);
+  line-height: 1.8;
+  max-width: 360px;
+  width: 90%;
+}
+.boot-line { display: block; overflow: hidden; white-space: nowrap; max-width: 0; animation: typeIn 0.5s ease forwards; }
+.boot-line:nth-child(1) { animation-delay: 0.1s; }
+.boot-line:nth-child(2) { animation-delay: 0.5s; }
+.boot-line:nth-child(3) { animation-delay: 0.9s; }
+.boot-line:nth-child(4) { animation-delay: 1.3s; }
+.boot-line:nth-child(5) { animation-delay: 1.7s; }
+.boot-line:nth-child(6) { animation-delay: 2.0s; }
+@keyframes typeIn {
+  to { max-width: 100%; }
+}
+</style>
+</head>
+<body>
+
+<!-- BOOT SCREEN -->
+<div id="bootScreen">
+  <div class="boot-text">
+    <span class="boot-line">> SCROLLTRAP v2.4.1 initializing...</span>
+    <span class="boot-line">> Loading algorithm simulation engine...</span>
+    <span class="boot-line">> Generating user profile database...</span>
+    <span class="boot-line">> Calibrating engagement metrics...</span>
+    <span class="boot-line">> Connecting to ad targeting network...</span>
+    <span class="boot-line" style="color:var(--amber)">> WARNING: You are about to see how you are profiled.</span>
+  </div>
+</div>
+
+<!-- SPLASH SCREEN -->
+<div id="splash" class="screen active">
+  <div class="ascii-logo">
+ ____  __  ____  __  __    __    ____  ____   __   ____
+/ ___)/  \(  _ \(  )(  )  (  )  (_  _)(  _ \ / _\ (  _ \
+\___ (  O ))   / )( / (_/\ / (_/\  )(   )   //    \ )___/
+(____/\__/(__\_)(__)____/ \____/ (__) (__\_)\_/\_/(__)  </div>
+  <div class="game-title">SCROLLTRAP</div>
+  <div class="game-sub">Algorithm Awareness Simulator</div>
+
+  <div class="splash-card">
+    <div class="label">> Mission briefing</div>
+    <ul>
+      <li>Examine social media posts served by an algorithm</li>
+      <li>Answer questions about WHY that content was shown</li>
+      <li>Spot targeted ads before they manipulate you</li>
+      <li>Earn points for algorithm awareness — lose lives for wrong answers</li>
+      <li>Learn how real platforms profile and monetize your attention</li>
+    </ul>
+  </div>
+
+  <div style="font-size:0.6rem;letter-spacing:3px;color:var(--muted);text-transform:uppercase;margin-bottom:0.6rem;max-width:380px;width:100%">Select difficulty</div>
+  <div class="mode-grid">
+    <button class="mode-btn selected" onclick="selectMode('easy',this)">
+      <span class="mode-name">CASUAL</span>
+      5 rounds · hints on · 5 lives
+    </button>
+    <button class="mode-btn" onclick="selectMode('normal',this)">
+      <span class="mode-name">AWARE</span>
+      8 rounds · no hints · 3 lives
+    </button>
+    <button class="mode-btn" onclick="selectMode('hard',this)">
+      <span class="mode-name">PARANOID</span>
+      10 rounds · speed · 2 lives
+    </button>
+    <button class="mode-btn" onclick="selectMode('expert',this)">
+      <span class="mode-name">HACKER</span>
+      12 rounds · speed · 1 life
+    </button>
+  </div>
+  <button class="start-btn" onclick="startGame()">[ ENTER THE FEED ]</button>
+</div>
+
+<!-- GAME SCREEN -->
+<div id="game" class="screen">
+  <div class="hud">
+    <div class="hud-title">SCROLLTRAP</div>
+    <div class="hud-stats">
+      <div class="hud-stat"><div class="val" id="hudScore">0</div><div class="lbl">Score</div></div>
+      <div class="hud-stat"><div class="val" id="hudRound">1/5</div><div class="lbl">Round</div></div>
+      <div class="hud-stat"><div class="val" id="hudStreak">0</div><div class="lbl">Streak</div></div>
+    </div>
+    <div class="lives-display" id="livesDisplay"></div>
+  </div>
+  <div class="algo-bar">
+    <div class="algo-label">Algo profile</div>
+    <div class="algo-track"><div class="algo-fill" id="algoFill" style="width:0%"></div></div>
+    <div class="algo-pct" id="algoPct">0%</div>
+  </div>
+  <div class="game-body">
+    <div class="feed-area" id="feedArea">
+      <div class="post-card" id="postCard"></div>
+      <button class="next-btn" id="nextBtn" onclick="nextRound()">[ NEXT POST >> ]</button>
+    </div>
+  </div>
+  <div class="profile-panel">
+    <div class="profile-label">> Your ad profile (building...)</div>
+    <div class="interest-chips" id="interestChips"></div>
+  </div>
+</div>
+
+<!-- RESULTS SCREEN -->
+<div id="results" class="screen">
+  <div class="results-inner">
+    <div class="results-header">
+      <div class="results-title">DEBRIEF</div>
+      <div class="results-sub">> session complete</div>
+    </div>
+    <div class="score-ring">
+      <div class="score-num" id="finalScore">0</div>
+      <div class="score-lbl">POINTS</div>
+    </div>
+    <div class="grade-box" id="gradeBox"></div>
+    <div class="stats-row">
+      <div class="stat-box"><div class="n" id="rCorrect" style="color:var(--green)">0</div><div class="l">Correct</div></div>
+      <div class="stat-box"><div class="n" id="rWrong" style="color:var(--red)">0</div><div class="l">Wrong</div></div>
+      <div class="stat-box"><div class="n" id="rStreak" style="color:var(--amber)">0</div><div class="l">Best Streak</div></div>
+    </div>
+    <div class="profile-report">
+      <div class="report-label">> Algorithmic profile built on you</div>
+      <div id="reportBars"></div>
+    </div>
+    <div class="truth-box">
+      <div class="truth-label">> Real world truth</div>
+      <div class="truth-item">Platforms track every millisecond you spend on content — even without liking it.</div>
+      <div class="truth-item">A "free" social app earns money by selling your attention profile to advertisers.</div>
+      <div class="truth-item">You can be placed in an ad category like "likely pregnant" or "financially stressed" without ever saying it.</div>
+      <div class="truth-item">The feed is not random — every post is chosen to maximize the time you spend on the app.</div>
+    </div>
+    <button class="replay-btn" onclick="resetToSplash()">[ PLAY AGAIN ]</button>
+  </div>
+</div>
+
+<script>
+/* ─── GAME DATA ─── */
+const CARDS = [
+  {
+    id:'c1', type:'content', category:'fitness',
+    user:'@GymRatJordan', time:'3m ago', emoji:'💪',
+    avatarBg:'#0a1a0a',
+    caption:'Just hit a new squat PR — 140kg! 18 months of consistency paying off.',
+    tags:['#fitness','#gym','#strength'],
+    likes:'4.2K', views:'89K',
+    badge:'organic',
+    question:'Why did the algorithm serve you this fitness post?',
+    options:[
+      {text:'You recently searched "home workout tips"', correct:true},
+      {text:'It is trending globally today', correct:false},
+      {text:'The account paid for a boost', correct:false},
+      {text:'It was posted recently and is new', correct:false},
+    ],
+    explanation:'Search queries are powerful signals. Searching fitness terms immediately flags your interest to the algorithm — it will now prioritise fitness content across your feed.',
+    interest:'fitness', delta:8
+  },
+  {
+    id:'c2', type:'ad', category:'shopping',
+    user:'Sponsored · PeakFormSupplements', time:'', emoji:'🧴',
+    avatarBg:'#1a1000',
+    caption:'The pre-workout that actually works. 40% off this weekend only. Used by 200K athletes.',
+    tags:['#ad','#supplements','#fitness'],
+    likes:'—', views:'—',
+    badge:'targeted',
+    question:'This is a targeted ad. What data MOST likely triggered it?',
+    options:[
+      {text:'Your age and gender demographics', correct:false},
+      {text:'You engaged with multiple fitness posts', correct:true},
+      {text:'You visited this brand\'s website', correct:false},
+      {text:'Your friends use supplements', correct:false},
+    ],
+    explanation:'Correct! In-app engagement (liking, watching, saving fitness content) is the primary signal. The advertiser bought access to the "fitness enthusiast" audience segment — which your behavior just placed you in.',
+    interest:'ads_seen', delta:0
+  },
+  {
+    id:'c3', type:'content', category:'travel',
+    user:'@WanderWithMaya', time:'22m ago', emoji:'🗺️',
+    avatarBg:'#001018',
+    caption:'Bali for under €700 all-in. The 5 apps I used and why nobody talks about them.',
+    tags:['#travel','#budgettravel','#bali'],
+    likes:'28K', views:'1.1M',
+    badge:'viral',
+    question:'This post has 1M+ views. Why is the algorithm prioritising it for you now?',
+    options:[
+      {text:'The creator paid for promotion', correct:false},
+      {text:'High engagement rate signals quality content to serve wider', correct:true},
+      {text:'You follow this account', correct:false},
+      {text:'Travel is trending in your country', correct:false},
+    ],
+    explanation:'Viral velocity matters. When a post earns high engagement fast (likes ÷ views ratio), the algorithm interprets it as high-quality and widens its distribution — including to new users who match partial interest signals.',
+    interest:'travel', delta:6
+  },
+  {
+    id:'c4', type:'content', category:'cooking',
+    user:'@NoodleNinja', time:'1h ago', emoji:'🍜',
+    avatarBg:'#180a00',
+    caption:'5-ingredient ramen that tastes like a restaurant. I make this every Sunday.',
+    tags:['#cooking','#ramen','#easyrecipes'],
+    likes:'11K', views:'340K',
+    badge:'organic',
+    question:'You have NEVER searched cooking before. Why is this in your feed?',
+    options:[
+      {text:'You watched a cooking video for more than 7 seconds last week', correct:true},
+      {text:'Your location is near restaurants', correct:false},
+      {text:'The creator is very popular globally', correct:false},
+      {text:'It is lunchtime and the algorithm guesses you are hungry', correct:false},
+    ],
+    explanation:'Watch time is the most powerful passive signal. You do not need to like or follow — simply pausing on a video for a few seconds is enough for the algorithm to test more content from that category.',
+    interest:'cooking', delta:7
+  },
+  {
+    id:'c5', type:'ad', category:'food delivery',
+    user:'Sponsored · QuickBite Delivery', time:'', emoji:'🛵',
+    avatarBg:'#180800',
+    caption:'Ramen, sushi, tacos — delivered in 25 mins. First order free with code FEED.',
+    tags:['#ad','#fooddelivery'],
+    likes:'—', views:'—',
+    badge:'targeted',
+    question:'This food delivery ad appeared after cooking content. What is the algorithm doing?',
+    options:[
+      {text:'Purely coincidence — ads are random', correct:false},
+      {text:'It is lunchtime, a common ad trigger', correct:false},
+      {text:'It mapped cooking interest to likely food purchase intent', correct:true},
+      {text:'You searched for delivery apps', correct:false},
+    ],
+    explanation:'This is "interest adjacency." Cooking content signals food interest, which advertisers in food delivery actively target. Your profile was sold to QuickBite as a "likely food purchaser" — without you doing anything explicit.',
+    interest:'ads_seen', delta:0
+  },
+  {
+    id:'c6', type:'content', category:'finance',
+    user:'@MoneyMindsetClub', time:'4h ago', emoji:'📈',
+    avatarBg:'#001a08',
+    caption:'I saved £12,000 in 14 months on a £28K salary. The exact system I used, step by step.',
+    tags:['#personalfinance','#savings','#moneytips'],
+    likes:'67K', views:'2.4M',
+    badge:'viral',
+    question:'Finance content reached 2.4M views. What PRIMARILY drove the algorithm to boost it?',
+    options:[
+      {text:'The algorithm promotes financial literacy as a public service', correct:false},
+      {text:'High share rate — finance tips get shared more than average content', correct:true},
+      {text:'The creator paid to promote this post', correct:false},
+      {text:'Finance is a popular topic in your country', correct:false},
+    ],
+    explanation:'Shares are the highest-value signal. When people share content, they\'re essentially endorsing it to new audiences — dramatically amplifying reach. Finance, health, and relationship content have the highest organic share rates.',
+    interest:'finance', delta:5
+  },
+  {
+    id:'c7', type:'content', category:'wellness',
+    user:'@CalmDailyHabits', time:'6h ago', emoji:'🧘',
+    avatarBg:'#001010',
+    caption:'3 breathing techniques that reduce cortisol in under 5 minutes. Backed by actual studies.',
+    tags:['#mentalhealth','#wellness','#anxiety'],
+    likes:'19K', views:'520K',
+    badge:'organic',
+    question:'The algorithm fed you wellness content after finance content. Why?',
+    options:[
+      {text:'Both topics appear together in "self-improvement" audience segments', correct:true},
+      {text:'You searched for wellness tips', correct:false},
+      {text:'Your screen time is high, so it guesses you are stressed', correct:false},
+      {text:'This creator collaborated with the finance creator', correct:false},
+    ],
+    explanation:'Platforms group users into psychographic segments like "self-improvement seeker." If you engage with finance AND productivity content, the algorithm infers this broader identity and serves adjacent categories like wellness and learning.',
+    interest:'wellness', delta:6
+  },
+  {
+    id:'c8', type:'ad', category:'mental health app',
+    user:'Sponsored · Calm Pro', time:'', emoji:'🌙',
+    avatarBg:'#00101a',
+    caption:'85% of users report less stress in 2 weeks. Start your free trial today.',
+    tags:['#ad','#mentalhealth','#meditation'],
+    likes:'—', views:'—',
+    badge:'targeted',
+    question:'A meditation app ad appeared after wellness content. What ad technique is this?',
+    options:[
+      {text:'Retargeting — you visited their website before', correct:false},
+      {text:'Behavioural targeting — your content pattern matches their buyer profile', correct:true},
+      {text:'Lookalike audience — your friends use Calm', correct:false},
+      {text:'Random insertion — ads appear every 3rd post', correct:false},
+    ],
+    explanation:'Behavioural targeting: Calm Pro purchased access to users categorised as "stress-aware" or "wellness-interested." Your engagement pattern placed you there — no website visit needed. Advertisers pay premium rates for these high-intent segments.',
+    interest:'ads_seen', delta:0
+  },
+  {
+    id:'c9', type:'content', category:'gaming',
+    user:'@PixelchronicleTV', time:'9h ago', emoji:'🎮',
+    avatarBg:'#0a0018',
+    caption:'This indie game sold 2M copies with ZERO marketing budget. The dev explains how.',
+    tags:['#gaming','#indiedev','#gamedev'],
+    likes:'44K', views:'890K',
+    badge:'viral',
+    question:'You have never engaged with gaming content. Why did this appear?',
+    options:[
+      {text:'The algorithm is testing a new interest category on your profile', correct:true},
+      {text:'You follow gaming hashtags', correct:false},
+      {text:'It went viral so everyone sees it', correct:false},
+      {text:'You are in the age group most likely to game', correct:false},
+    ],
+    explanation:'Exploration mode: algorithms deliberately insert "probe" content from new categories. If you engage, it expands your profile. If you scroll past quickly, it learns that category is low-interest. This is how your feed slowly evolves and deepens.',
+    interest:'gaming', delta:4
+  },
+  {
+    id:'c10', type:'content', category:'shopping',
+    user:'@StyleDropsDaily', time:'2h ago', emoji:'👟',
+    avatarBg:'#180010',
+    caption:'These shoes sold out in 4 minutes. The resale price is already up 300%. Link in bio.',
+    tags:['#sneakers','#fashion','#streetwear'],
+    likes:'92K', views:'3.1M',
+    badge:'viral',
+    question:'This heavily commercial post is going viral. What does the algorithm gain from showing it?',
+    options:[
+      {text:'Nothing — it shows it because it is popular', correct:false},
+      {text:'Shopping interest data to build your buyer profile for advertisers', correct:true},
+      {text:'The creator pays the platform a share of link clicks', correct:false},
+      {text:'It reduces ads by filling slots with popular content', correct:false},
+    ],
+    explanation:'Every interaction with commerce content — even just watching — builds your buyer profile. The platform learns your price tolerance, style preferences, and purchase triggers. This data is worth more than the ad revenue from showing you an explicit ad.',
+    interest:'shopping', delta:7
+  },
+  {
+    id:'c11', type:'ad', category:'fashion',
+    user:'Sponsored · DropZone Sneakers', time:'', emoji:'👟',
+    avatarBg:'#180008',
+    caption:'Limited drop. Your size is still available. 200 pairs left worldwide.',
+    tags:['#ad','#sneakers','#limiteddrop'],
+    likes:'—', views:'—',
+    badge:'targeted',
+    question:'This ad uses "200 pairs left." What psychological technique is this?',
+    options:[
+      {text:'Social proof — showing that others want it', correct:false},
+      {text:'Scarcity and urgency — FOMO to trigger impulse purchase', correct:true},
+      {text:'Authority — implying it is an official product', correct:false},
+      {text:'Personalisation — it knows your size from shopping history', correct:false},
+    ],
+    explanation:'Scarcity + urgency is the most effective e-commerce ad formula. The algorithm selects users already in the "sneaker buyer" segment, then the ad applies psychological pressure to convert interest into purchase. This combination can multiply conversion rates by 3-5x.',
+    interest:'ads_seen', delta:0
+  },
+  {
+    id:'c12', type:'content', category:'news',
+    user:'@BreakingFeedNews', time:'30m ago', emoji:'📰',
+    avatarBg:'#180000',
+    caption:'Major study reveals social media use linked to anxiety in teens. Platforms respond.',
+    tags:['#news','#socialmedia','#mentalhealth'],
+    likes:'83K', views:'4.7M',
+    badge:'viral',
+    question:'Why do algorithms often prioritise emotionally charged news content?',
+    options:[
+      {text:'Platforms have a legal obligation to show news', correct:false},
+      {text:'Controversy and strong emotion drive higher engagement and longer sessions', correct:true},
+      {text:'News content is excluded from ad targeting', correct:false},
+      {text:'Users explicitly requested more news in surveys', correct:false},
+    ],
+    explanation:'Outrage, fear, and strong emotion trigger more comments, shares, and return visits than neutral content. The algorithm is not trying to make you angry — it is optimising for time-on-app, and emotional content is the most effective tool it has.',
+    interest:'news', delta:5
+  }
+];
+
+/* ─── DIFFICULTY CONFIG ─── */
+const MODES = {
+  easy:   { rounds:5,  lives:5, hints:true,  speed:false },
+  normal: { rounds:8,  lives:3, hints:false, speed:false },
+  hard:   { rounds:10, lives:2, hints:false, speed:true  },
+  expert: { rounds:12, lives:1, hints:false, speed:true  }
+};
+
+/* ─── STATE ─── */
+let G = {};
+let selectedMode = 'easy';
+let speedTimer = null;
+
+function selectMode(mode, btn) {
+  selectedMode = mode;
+  document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('selected'));
+  btn.classList.add('selected');
+}
+
+function startGame() {
+  const cfg = MODES[selectedMode];
+  G = {
+    mode: selectedMode,
+    cfg,
+    round: 0,
+    score: 0,
+    lives: cfg.lives,
+    streak: 0,
+    bestStreak: 0,
+    correct: 0,
+    wrong: 0,
+    algoLevel: 10,
+    interests: {},
+    deck: shuffle([...CARDS]).slice(0, cfg.rounds),
+    answered: false
+  };
+  showScreen('game');
+  renderLives();
+  renderRound();
+}
+
+function shuffle(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+function renderLives() {
+  const el = document.getElementById('livesDisplay');
+  el.innerHTML = '';
+  for (let i = 0; i < MODES[selectedMode].lives; i++) {
+    const d = document.createElement('div');
+    d.className = 'life' + (i >= G.lives ? ' dead' : '');
+    el.appendChild(d);
+  }
+}
+
+function updateHUD() {
+  document.getElementById('hudScore').textContent = G.score;
+  document.getElementById('hudRound').textContent = `${G.round}/${G.cfg.rounds}`;
+  document.getElementById('hudStreak').textContent = G.streak;
+  document.getElementById('algoFill').style.width = G.algoLevel + '%';
+  document.getElementById('algoPct').textContent = Math.round(G.algoLevel) + '%';
+}
+
+function renderInterestChips() {
+  const el = document.getElementById('interestChips');
+  const entries = Object.entries(G.interests).filter(([k]) => k !== 'ads_seen').sort((a,b) => b[1]-a[1]).slice(0,6);
+  if (entries.length === 0) { el.innerHTML = '<span style="color:var(--muted);font-size:0.6rem">No profile built yet</span>'; return; }
+  const max = entries[0][1];
+  el.innerHTML = entries.map(([k, v]) => {
+    const pct = v / max;
+    const cls = pct > 0.7 ? 'chip-high' : pct > 0.4 ? 'chip-med' : 'chip-low';
+    return `<span class="chip ${cls}">${k} [${v}]</span>`;
+  }).join('');
+}
+
+function renderRound() {
+  if (G.round >= G.cfg.rounds || G.lives <= 0) { showResults(); return; }
+  G.round++;
+  G.answered = false;
+  const card = G.deck[G.round - 1];
+
+  updateHUD();
+  renderInterestChips();
+
+  const postCard = document.getElementById('postCard');
+  const nextBtn = document.getElementById('nextBtn');
+  nextBtn.classList.remove('show');
+
+  // Build badge
+  const badgeClass = card.badge === 'targeted' ? 'badge-targeted' : card.badge === 'viral' ? 'badge-viral' : 'badge-organic';
+  const badgeText = card.badge === 'targeted' ? 'TARGETED AD' : card.badge === 'viral' ? 'VIRAL BOOST' : 'ORGANIC';
+
+  // Hints
+  let hintHTML = '';
+  if (G.cfg.hints && card.type === 'ad') {
+    hintHTML = `<div style="font-size:0.6rem;color:var(--amber);margin-top:0.4rem;padding:0 0.9rem">HINT: This is a paid advertisement.</div>`;
+  }
+
+  // Shuffle options
+  const opts = shuffle([...card.options]);
+
+  postCard.className = 'post-card';
+  postCard.innerHTML = `
+    <div class="card-header">
+      <div class="avatar-box" style="background:${card.avatarBg}">${card.emoji}</div>
+      <div>
+        <div class="card-username">${card.user}</div>
+        ${card.time ? `<div class="card-time">${card.time}</div>` : ''}
+      </div>
+      <div class="algo-badge ${badgeClass}">${badgeText}</div>
+    </div>
+    <div class="card-visual">
+      <div class="card-emoji">${card.emoji}</div>
+      <div class="card-content">
+        <div class="card-caption">${card.caption}</div>
+        <div class="card-tags">${card.tags.map(t=>`<span>${t}</span>`).join('')}</div>
+      </div>
+    </div>
+    ${card.likes !== '—' ? `<div class="card-stats"><span class="card-stat">Likes <span>${card.likes}</span></span><span class="card-stat">Views <span>${card.views}</span></span></div>` : ''}
+    ${hintHTML}
+    <div class="question-box">
+      <div class="question-text">${card.question}</div>
+      <div class="answer-grid" id="answerGrid">
+        ${opts.map((o,i) => `<button class="answer-btn" onclick="answer(this,${o.correct},${i})">${o.text}</button>`).join('')}
+      </div>
+    </div>
+    <div class="feedback-bar" id="feedbackBar"></div>
+  `;
+
+  if (G.cfg.speed) startSpeedTimer(card);
+}
+
+function startSpeedTimer(card) {
+  let t = 12;
+  if (speedTimer) clearInterval(speedTimer);
+  const lbl = document.querySelector('.algo-label');
+  lbl.textContent = `> SPEED: ${t}s`;
+  speedTimer = setInterval(() => {
+    t--;
+    lbl.textContent = `> SPEED: ${t}s`;
+    if (t <= 0) {
+      clearInterval(speedTimer);
+      lbl.textContent = '> Algo profile';
+      if (!G.answered) {
+        // time out = wrong
+        answer(null, false, -1, true);
+      }
+    }
+  }, 1000);
+}
+
+function answer(btn, isCorrect, idx, timedOut = false) {
+  if (G.answered) return;
+  G.answered = true;
+  if (speedTimer) { clearInterval(speedTimer); document.querySelector('.algo-label').textContent = '> Algo profile'; }
+
+  const card = G.deck[G.round - 1];
+  const grid = document.getElementById('answerGrid');
+  const feedback = document.getElementById('feedbackBar');
+  const postCard = document.getElementById('postCard');
+  const nextBtn = document.getElementById('nextBtn');
+
+  // Disable all buttons, highlight correct
+  grid.querySelectorAll('.answer-btn').forEach((b, i) => {
+    b.disabled = true;
+  });
+
+  if (isCorrect && !timedOut) {
+    // Correct
+    if (btn) btn.classList.add('correct');
+    const points = G.cfg.speed ? 150 : 100;
+    const streakBonus = G.streak >= 2 ? G.streak * 25 : 0;
+    G.score += points + streakBonus;
+    G.streak++;
+    G.bestStreak = Math.max(G.bestStreak, G.streak);
+    G.correct++;
+    G.algoLevel = Math.min(100, G.algoLevel + 8);
+    if (card.delta > 0) G.interests[card.category] = (G.interests[card.category] || 0) + card.delta;
+    postCard.classList.add('correct-glow');
+    feedback.className = 'feedback-bar correct show';
+    feedback.innerHTML = `+${points}${streakBonus > 0 ? ` +${streakBonus} streak bonus` : ''} &nbsp;|&nbsp; ${card.explanation}`;
+  } else {
+    // Wrong or timed out
+    if (btn) btn.classList.add('wrong');
+    // highlight correct answer
+    grid.querySelectorAll('.answer-btn').forEach(b => {
+      if (b.textContent.trim() === card.options.find(o=>o.correct)?.text) b.classList.add('correct');
+    });
+    G.lives--;
+    G.streak = 0;
+    G.wrong++;
+    G.algoLevel = Math.min(100, G.algoLevel + 4);
+    postCard.classList.add('wrong-glow');
+    postCard.classList.add('shake');
+    feedback.className = 'feedback-bar wrong show';
+    feedback.innerHTML = (timedOut ? 'TIME OUT! ' : 'WRONG. ') + card.explanation;
+    renderLives();
+    if (G.lives <= 0) {
+      setTimeout(showResults, 1800);
+      return;
+    }
+  }
+
+  updateHUD();
+  renderInterestChips();
+  nextBtn.classList.add('show');
+}
+
+function nextRound() {
+  if (G.round >= G.cfg.rounds) { showResults(); return; }
+  renderRound();
+}
+
+function showResults() {
+  if (speedTimer) clearInterval(speedTimer);
+  showScreen('results');
+
+  document.getElementById('finalScore').textContent = G.score;
+  document.getElementById('rCorrect').textContent = G.correct;
+  document.getElementById('rWrong').textContent = G.wrong;
+  document.getElementById('rStreak').textContent = G.bestStreak;
+
+  // Grade
+  const pct = G.correct / Math.max(G.round, 1);
+  let grade, gradeColor;
+  if (pct >= 0.9) { grade = '[ ALGORITHM IMMUNE ]'; gradeColor = 'var(--green)'; }
+  else if (pct >= 0.7) { grade = '[ DIGITAL DETECTIVE ]'; gradeColor = 'var(--cyan)'; }
+  else if (pct >= 0.5) { grade = '[ PATTERN SPOTTER ]'; gradeColor = 'var(--amber)'; }
+  else { grade = '[ FEED CAPTIVE ]'; gradeColor = 'var(--red)'; }
+  const gb = document.getElementById('gradeBox');
+  gb.textContent = grade;
+  gb.style.color = gradeColor;
+
+  // Profile bars
+  const entries = Object.entries(G.interests).filter(([k]) => k !== 'ads_seen').sort((a,b) => b[1]-a[1]);
+  const max = entries[0]?.[1] || 1;
+  const colors = ['#00ff41','#00b32c','#ffb700','#00e5ff','#ff8c00','#a0ff00'];
+  document.getElementById('reportBars').innerHTML = entries.map(([k, v], i) => {
+    const pct = Math.round((v / max) * 100);
+    return `<div class="report-bar-row">
+      <div class="report-bar-name">${k}</div>
+      <div class="report-bar-track"><div class="report-bar-fill" style="width:${pct}%;background:${colors[i%colors.length]}"></div></div>
+      <div class="report-bar-val" style="color:${colors[i%colors.length]}">${v}</div>
+    </div>`;
+  }).join('') || '<div style="color:var(--muted);font-size:0.7rem">No profile data collected.</div>';
+}
+
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+function resetToSplash() {
+  showScreen('splash');
+}
+
+/* ─── BOOT SEQUENCE ─── */
+window.addEventListener('load', () => {
+  setTimeout(() => {
+    document.getElementById('bootScreen').classList.add('gone');
+  }, 2800);
+});
+</script>
+</body>
+</html>
